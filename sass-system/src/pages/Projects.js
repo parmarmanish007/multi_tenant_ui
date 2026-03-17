@@ -12,6 +12,8 @@ export default function Projects() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const userid = localStorage.getItem("userid");
+
   // ================= FETCH PROJECTS =================
   const fetchProjects = async () => {
     try {
@@ -56,7 +58,7 @@ export default function Projects() {
       await api.post("projects/", {
         name,
         company,
-        status: "Todo",
+        userid
       });
 
       setSuccess("Project created successfully ✅");

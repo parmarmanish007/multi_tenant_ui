@@ -14,6 +14,7 @@ export default function Tasks() {
   const [description, setDescription] = useState("");
   const [project, setProject] = useState("");
   const [assignedUser, setAssignedUser] = useState("");
+  const [dueDate, setDueDate] = useState(""); // <-- added dueDate state
 
   const location = useLocation();
   const params = new URLSearchParams(location.search);
@@ -51,12 +52,14 @@ export default function Tasks() {
       project,
       status: "Todo",
       assigned_to: assignedUser,
+      due_date: dueDate || null,
     });
 
     setTitle("");
     setDescription("");
     setProject("");
     setAssignedUser("");
+    setDueDate("");
 
     fetchTasks();
   };
@@ -148,6 +151,21 @@ export default function Tasks() {
           </select>
         </div>
 
+        <div style={formRow}>
+  <label style={{ alignSelf: "center", marginRight: 8 }}>Due Date</label>
+
+  <div style={dateWrapper}>
+    <span style={calendarIcon}>📅</span>
+
+    <input
+      type="date"
+      value={dueDate}
+      onChange={(e) => setDueDate(e.target.value)}
+      style={dateInput}
+    />
+  </div>
+</div>
+
         <button style={button} onClick={createTask}>
           ➕ Create Task
         </button>
@@ -206,6 +224,12 @@ export default function Tasks() {
 function TaskCard({ task, updateStatus, users }) {
   const assignedUser = users.find((u) => u.id === task.assigned_to);
 
+  // format due date if present
+  const formattedDue =
+    task.due_date && !isNaN(Date.parse(task.due_date))
+      ? new Date(task.due_date).toLocaleDateString()
+      : task.due_date || null;
+
   return (
     <div style={taskCard}>
       <h4>{task.title}</h4>
@@ -215,6 +239,12 @@ function TaskCard({ task, updateStatus, users }) {
       <p style={{ fontSize: "12px" }}>
         👤 {assignedUser ? assignedUser.username : "Unassigned"}
       </p>
+
+      {formattedDue && (
+        <p style={{ fontSize: "12px", color: "#555" }}>
+          📅 Due: {formattedDue}
+        </p>
+      )}
 
       <select
         style={{ width: "100%", marginTop: "8px" }}
@@ -288,4 +318,27 @@ const taskCard = {
   borderRadius: "6px",
   marginBottom: "10px",
   boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+};
+
+const dateWrapper = {
+  display: "flex",
+  alignItems: "center",
+  border: "1px solid #d1d5db",
+  borderRadius: "6px",
+  padding: "6px 10px",
+  background: "#fff",
+  maxWidth: "220px",
+};
+
+const calendarIcon = {
+  marginRight: "6px",
+  fontSize: "16px",
+};
+
+const dateInput = {
+  border: "none",
+  outline: "none",
+  width: "100%",
+  fontSize: "14px",
+  background: "transparent",
 };
