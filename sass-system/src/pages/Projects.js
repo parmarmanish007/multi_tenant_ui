@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from "react";
 import api from "../api/api";
 import { Link } from "react-router-dom";
+import { useFormik } from "formik";
+import * as Yup from "yup";
 
 export default function Projects() {
   const [projects, setProjects] = useState([]);
   const [companies, setCompanies] = useState([]);
 
-  const [name, setName] = useState("");
-  const [company, setCompany] = useState("");
-
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [loader, setLoader] = useState(false);
 
   const userid = localStorage.getItem("userid");
 
@@ -39,87 +39,98 @@ export default function Projects() {
     fetchCompanies();
   }, []);
 
-  // ================= CREATE PROJECT WITH VALIDATION =================
-  const createProject = async () => {
-    setError("");
-    setSuccess("");
+  // ================= FORM (Formik + Yup) =================
+  const formik = useFormik({
+    initialValues: {
+      name: "",
+      company: ""
+    },
+    validationSchema: Yup.object({
+      name: Yup.string().trim().required("Project name is required"),
+      company: Yup.string().required("Company is required"),
+    }),
+    onSubmit: async (values, { resetForm, setSubmitting }) => {
+      setError("");
+      setSuccess("");
+      setLoader(true);
 
-    if (!name.trim()) {
-      setError("Project name is required");
-      return;
-    }
+      try {
+        const payload = {
+          name: values.name.trim(),
+          company: values.company,
+          userid,
+        };
 
-    if (!company) {
-      setError("Company is required");
-      return;
-    }
+        await api.post("projects/", payload);
 
-    try {
-      await api.post("projects/", {
-        name,
-        company,
-        userid
-      });
-
-      setSuccess("Project created successfully ✅");
-
-      setName("");
-      setCompany("");
-
-      fetchProjects();
-    } catch (err) {
-      console.error(err);
-      setError("Failed to create project");
-    }
-  };
+        setSuccess("Project created successfully ✅");
+        resetForm();
+        fetchProjects();
+      } catch (err) {
+        console.error("create project error:", err);
+        setError("Failed to create project");
+      } finally {
+        setLoader(false);
+        setSubmitting(false);
+      }
+    },
+  });
 
   return (
     <div style={container}>
       <h2>📁 Projects</h2>
 
       {/* ================= ERROR / SUCCESS MESSAGE ================= */}
-
       {error && <div style={errorBox}>❌ {error}</div>}
-
       {success && <div style={successBox}>{success}</div>}
 
       {/* ================= CREATE PROJECT CARD ================= */}
-
       <div style={card}>
         <h3>Create Project</h3>
 
-        <div style={formRow}>
-          <input
-            style={input}
-            value={name}
-            placeholder="Project Name"
-            onChange={(e) => setName(e.target.value)}
-          />
+        <form onSubmit={formik.handleSubmit}>
+          <div style={formRow}>
+            <input
+              style={input}
+              name="name"
+              value={formik.values.name}
+              placeholder="Project Name"
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            />
 
-          <select
-            style={input}
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
-          >
-            <option value="">Select Company</option>
+            <select
+              style={input}
+              name="company"
+              value={formik.values.company}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            >
+              <option value="">Select Company</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+          {formik.touched.name && formik.errors.name && (
+            <div style={{ color: "red", marginBottom: 8 }}>{formik.errors.name}</div>
+          )}
 
-        <button style={button} onClick={createProject}>
-          ➕ Create Project
-        </button>
+          {formik.touched.company && formik.errors.company && (
+            <div style={{ color: "red", marginBottom: 8 }}>{formik.errors.company}</div>
+          )}
+          <button style={button} type="submit" disabled={formik.isSubmitting || loader}>
+            {loader ? "Creating..." : "➕ Create Project"}
+          </button>
+        </form>
       </div>
 
       <hr />
 
       {/* ================= PROJECT LIST ================= */}
-
       <h3>📋 Project List</h3>
 
       <div style={tableCard}>
@@ -145,7 +156,6 @@ export default function Projects() {
                     </Link>
                   </td>
 
-                  {/* ✅ SHOW COMPANY NAME */}
                   <td style={td}>
                     {companies.find((c) => c.id === p.company)?.name || "-"}
                   </td>

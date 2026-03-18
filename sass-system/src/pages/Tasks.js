@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import api from "../api/api";
+import { useFormik } from "formik";
+import * as Yup from "yup";
 
 export default function Tasks() {
   const role = localStorage.getItem("role");
@@ -10,12 +12,6 @@ export default function Tasks() {
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [project, setProject] = useState("");
-  const [assignedUser, setAssignedUser] = useState("");
-  const [dueDate, setDueDate] = useState(""); // <-- added dueDate state
-
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const selectedProjectId = params.get("projectId");
@@ -23,18 +19,33 @@ export default function Tasks() {
   // ================= FETCH DATA =================
 
   const fetchTasks = async () => {
-    const res = await api.get("tasks/");
-    setTasks(res.data || []);
+    try {
+      const res = await api.get("tasks/");
+      setTasks(res.data || []);
+    } catch (err) {
+      console.error("fetchTasks:", err);
+      setTasks([]);
+    }
   };
 
   const fetchProjects = async () => {
-    const res = await api.get("projects/");
-    setProjects(res.data || []);
+    try {
+      const res = await api.get("projects/");
+      setProjects(res.data || []);
+    } catch (err) {
+      console.error("fetchProjects:", err);
+      setProjects([]);
+    }
   };
 
   const fetchUsers = async () => {
-    const res = await api.get("users/");
-    setUsers(res.data || []);
+    try {
+      const res = await api.get("users/");
+      setUsers(res.data || []);
+    } catch (err) {
+      console.error("fetchUsers:", err);
+      setUsers([]);
+    }
   };
 
   useEffect(() => {
@@ -43,40 +54,67 @@ export default function Tasks() {
     fetchUsers();
   }, []);
 
-  // ================= CREATE TASK =================
+  // ================= FORM (Formik) =================
 
-  const createTask = async () => {
-    await api.post("tasks/", {
-      title,
-      description,
-      project,
-      status: "Todo",
-      assigned_to: assignedUser,
-      due_date: dueDate || null,
-    });
+  const formik = useFormik({
+    initialValues: {
+      title: "",
+      description: "",
+      project: selectedProjectId || "",
+      assignedUser: "",
+      dueDate: "",
+    },
+    validationSchema: Yup.object({
+      title: Yup.string().required("Title is required"),
+      project: Yup.string().required("Please select a project"),
+      // assignedUser: Yup.string().required("Please select an assigned user"),
+      dueDate: Yup.string().required("Please select a due date"),
+    }),
+    enableReinitialize: true, // so selectedProjectId pre-fills project when query param present
+    onSubmit: async (values, { resetForm, setSubmitting }) => {
+      try {
+        const payload = {
+          title: values.title.trim(),
+          description: values.description || null,
+          project: values.project,
+          status: "Todo",
+          assigned_to: values.assignedUser || (role === "Member" ? userId : null),
+          due_date: values.dueDate || null,
+        };
 
-    setTitle("");
-    setDescription("");
-    setProject("");
-    setAssignedUser("");
-    setDueDate("");
+        await api.post("tasks/", payload);
 
-    fetchTasks();
-  };
+        resetForm();
+        fetchTasks();
+      } catch (err) {
+        console.error("create task error:", err);
+        alert("Failed to create task");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+  });
 
   // ================= UPDATE STATUS =================
 
   const updateStatus = async (id, status) => {
-    await api.patch(`tasks/${id}/`, { status });
-    fetchTasks();
+    try {
+      await api.patch(`tasks/${id}/`, { status });
+      fetchTasks();
+    } catch (err) {
+      console.error("updateStatus:", err);
+      alert("Failed to update status");
+    }
   };
 
   // ================= ROLE-BASED FILTER =================
 
   const filteredTasks = tasks.filter((task) => {
-    // If project filter is selected
+    // If project filter is selected via query param
     if (selectedProjectId) {
-      if (String(task.project) !== String(selectedProjectId)) {
+      const taskProjectId =
+        task.project && (typeof task.project === "object" ? task.project.id : task.project);
+      if (String(taskProjectId) !== String(selectedProjectId)) {
         return false;
       }
     }
@@ -93,125 +131,149 @@ export default function Tasks() {
   // ================= GROUP LIKE JIRA =================
 
   const todoTasks = filteredTasks.filter((t) => t.status === "Todo");
-  const inProgressTasks = filteredTasks.filter(
-    (t) => t.status === "In Progress",
-  );
+  const inProgressTasks = filteredTasks.filter((t) => t.status === "In Progress");
   const doneTasks = filteredTasks.filter((t) => t.status === "Done");
 
   return (
     <div style={container}>
       <h2>📌 Tasks</h2>
 
-      {/* ================= CREATE TASK (ADMIN + MEMBER) ================= */}
-
+      {/* ================= CREATE TASK (FORMIK) ================= */}
       <div style={card}>
         <h3>Create Task</h3>
 
-        <div style={formRow}>
-          <input
-            style={input}
-            placeholder="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
+        <form onSubmit={formik.handleSubmit}>
+          <div style={formRow}>
+            <input
+              style={input}
+              name="title"
+              placeholder="Title"
+              value={formik.values.title}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            />
 
-          <textarea
-            style={input}
-            placeholder="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
+            <textarea
+              style={input}
+              name="description"
+              placeholder="Description"
+              value={formik.values.description}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            />
+          </div>
 
-        <div style={formRow}>
-          <select
-            style={input}
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-          >
-            <option value="">Select Project</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
+          {formik.touched.title && formik.errors.title && (
+            <div style={{ color: "red", marginBottom: 8 }}>{formik.errors.title}</div>
+          )}
+
+          <div style={formRow}>
+            <select
+              style={input}
+              name="project"
+              value={formik.values.project}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            >
+              <option value="">Select Project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+             
+            <select
+              style={input}
+              name="assignedUser"
+              value={formik.values.assignedUser}
+              onChange={formik.handleChange}
+            >
+              <option value="">
+                Assign User {role === "Member" ? "(default: you)" : ""}
               </option>
-            ))}
-          </select>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.username}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <select
-            style={input}
-            value={assignedUser}
-            onChange={(e) => setAssignedUser(e.target.value)}
-          >
-            <option value="">Assign User</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.username}
-              </option>
-            ))}
-          </select>
-        </div>
+          {/* show project / assigned user errors on their own lines (prevents inline placement) */}
+          {formik.touched.project && formik.errors.project && (
+            <div style={{ color: "red", marginBottom: 8, width: "100%" }}>
+              {formik.errors.project}
+            </div>
+          )}
+          {/* {formik.touched.assignedUser && formik.errors.assignedUser && (
+            <div style={{ color: "red", marginBottom: 8, width: "100%" }}>
+              {formik.errors.assignedUser}
+            </div>
+          )} */}
 
-        <div style={formRow}>
-  <label style={{ alignSelf: "center", marginRight: 8 }}>Due Date</label>
+          <div style={formRow}>
+            <label style={{ alignSelf: "center", marginRight: 8 }}>Due Date</label>
 
-  <div style={dateWrapper}>
-    <span style={calendarIcon}>📅</span>
+            <div style={dateWrapper}>
+              <span style={calendarIcon}>📅</span>
 
-    <input
-      type="date"
-      value={dueDate}
-      onChange={(e) => setDueDate(e.target.value)}
-      style={dateInput}
-    />
-  </div>
-</div>
+              <input
+                type="date"
+                name="dueDate"
+                value={formik.values.dueDate}
+                onChange={formik.handleChange}
+                style={dateInput}
+              />
 
-        <button style={button} onClick={createTask}>
-          ➕ Create Task
-        </button>
+              {formik.values.dueDate && (
+                <button
+                  type="button"
+                  onClick={() => formik.setFieldValue("dueDate", "")}
+                  style={clearButton}
+                  title="Clear date"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* show due date error on its own line to avoid overlap */}
+          {formik.touched.dueDate && formik.errors.dueDate && (
+            <div style={{ color: "red", marginBottom: 8, width: "100%" }}>
+              {formik.errors.dueDate}
+            </div>
+          )}
+
+          <button style={button} type="submit" disabled={formik.isSubmitting}>
+            ➕ Create Task
+          </button>
+        </form>
       </div>
 
       <hr />
 
       {/* ================= JIRA BOARD ================= */}
-
       <div style={board}>
-        {/* TODO */}
         <div style={column}>
           <h3>🟡 Todo</h3>
           {todoTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              updateStatus={updateStatus}
-              users={users}
-            />
+            <TaskCard key={task.id} task={task} updateStatus={updateStatus} users={users} />
           ))}
         </div>
 
-        {/* IN PROGRESS */}
         <div style={column}>
           <h3>🔵 In Progress</h3>
           {inProgressTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              updateStatus={updateStatus}
-              users={users}
-            />
+            <TaskCard key={task.id} task={task} updateStatus={updateStatus} users={users} />
           ))}
         </div>
 
-        {/* DONE */}
         <div style={column}>
           <h3>🟢 Done</h3>
           {doneTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              updateStatus={updateStatus}
-              users={users}
-            />
+            <TaskCard key={task.id} task={task} updateStatus={updateStatus} users={users} />
           ))}
         </div>
       </div>
@@ -222,7 +284,7 @@ export default function Tasks() {
 /* ================= TASK CARD ================= */
 
 function TaskCard({ task, updateStatus, users }) {
-  const assignedUser = users.find((u) => u.id === task.assigned_to);
+  const assignedUser = users.find((u) => String(u.id) === String(task.assigned_to));
 
   // format due date if present
   const formattedDue =
@@ -240,11 +302,7 @@ function TaskCard({ task, updateStatus, users }) {
         👤 {assignedUser ? assignedUser.username : "Unassigned"}
       </p>
 
-      {formattedDue && (
-        <p style={{ fontSize: "12px", color: "#555" }}>
-          📅 Due: {formattedDue}
-        </p>
-      )}
+      {formattedDue && <p style={{ fontSize: "12px", color: "#555" }}>📅 Due: {formattedDue}</p>}
 
       <select
         style={{ width: "100%", marginTop: "8px" }}
@@ -341,4 +399,15 @@ const dateInput = {
   width: "100%",
   fontSize: "14px",
   background: "transparent",
+};
+
+const clearButton = {
+  padding: "6px 8px",
+  background: "#ef4444",
+  color: "#fff",
+  border: "none",
+  borderRadius: "6px",
+  cursor: "pointer",
+  fontSize: "14px",
+  height: "36px",
 };
