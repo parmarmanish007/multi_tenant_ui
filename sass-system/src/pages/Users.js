@@ -1,28 +1,36 @@
 import React, { useEffect, useState } from "react";
 import api from "../api/api";
+import { useFormik } from "formik";
+import * as Yup from "yup";
 
 export default function Users() {
   const [users, setUsers] = useState([]);
   const [companies, setCompanies] = useState([]);
 
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("Member");
-  const [company, setCompany] = useState("");
-
   const [error, setError] = useState(""); // 🔴 Error state
   const [success, setSuccess] = useState(""); // 🟢 Success message
+  const [loader, setLoader] = useState(false);
 
   // ================= FETCH USERS =================
   const fetchUsers = async () => {
-    const res = await api.get("users/");
-    setUsers(res.data || []);
+    try {
+      const res = await api.get("users/");
+      setUsers(res.data || []);
+    } catch (err) {
+      setUsers([]);
+      console.error("fetchUsers:", err);
+    }
   };
 
   // ================= FETCH COMPANIES =================
   const fetchCompanies = async () => {
-    const res = await api.get("company/");
-    setCompanies(res.data || []);
+    try {
+      const res = await api.get("company/");
+      setCompanies(res.data || []);
+    } catch (err) {
+      setCompanies([]);
+      console.error("fetchCompanies:", err);
+    }
   };
 
   useEffect(() => {
@@ -30,53 +38,47 @@ export default function Users() {
     fetchCompanies();
   }, []);
 
-  // ================= CREATE USER WITH VALIDATION =================
-  const createUser = async () => {
-    setError("");
-    setSuccess("");
+  // ================= FORM (Formik + Yup) =================
+  const formik = useFormik({
+    initialValues: {
+      username: "",
+      password: "",
+      role: "Member",
+      company: "",
+    },
+    validationSchema: Yup.object({
+      username: Yup.string().trim().required("Username is required"),
+      password: Yup.string().trim().required("Password is required"),
+      role: Yup.string().required("Role is required"),
+      company: Yup.string().required("Company is required"),
+    }),
+    onSubmit: async (values, { resetForm, setSubmitting }) => {
+      setError("");
+      setSuccess("");
+      setLoader(true);
 
-    // 🔴 Validation
-    if (!username.trim()) {
-      setError("Username is required");
-      return;
-    }
+      try {
+        const payload = {
+          username: values.username.trim(),
+          password: values.password,
+          role: values.role,
+          company: values.company,
+        };
 
-    if (!password.trim()) {
-      setError("Password is required");
-      return;
-    }
+        await api.post("users/", payload);
 
-    if (!role) {
-      setError("Role is required");
-      return;
-    }
-
-    if (!company) {
-      setError("Company is required");
-      return;
-    }
-
-    try {
-      await api.post("users/", {
-        username,
-        password,
-        role,
-        company,
-      });
-
-      setSuccess("User created successfully ✅");
-
-      // Reset fields
-      setUsername("");
-      setPassword("");
-      setRole("Member");
-      setCompany("");
-
-      fetchUsers();
-    } catch (err) {
-      setError("Error creating user");
-    }
-  };
+        setSuccess("User created successfully ✅");
+        resetForm();
+        fetchUsers();
+      } catch (err) {
+        console.error("create user error:", err);
+        setError("Error creating user");
+      } finally {
+        setLoader(false);
+        setSubmitting(false);
+      }
+    },
+  });
 
   return (
     <div style={container}>
@@ -93,52 +95,76 @@ export default function Users() {
       <div style={card}>
         <h3>Create User</h3>
 
-        <div style={formRow}>
-          <input
-            style={input}
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
+        <form onSubmit={formik.handleSubmit}>
+          <div style={formRow}>
+            <input
+              style={input}
+              name="username"
+              placeholder="Username"
+              value={formik.values.username}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            />
 
-          <input
-            style={input}
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
+            <input
+              style={input}
+              type="password"
+              name="password"
+              placeholder="Password"
+              value={formik.values.password}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            />
+          </div>
 
-        <div style={formRow}>
-          <select
-            style={input}
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            <option value="">Select Role</option>
-            <option value="Admin">Admin</option>
-            <option value="Member">Member</option>
-          </select>
+          {formik.touched.username && formik.errors.username && (
+            <div style={{ color: "red", marginBottom: 8 }}>{formik.errors.username}</div>
+          )}
+          {formik.touched.password && formik.errors.password && (
+            <div style={{ color: "red", marginBottom: 8 }}>{formik.errors.password}</div>
+          )}
 
-          <select
-            style={input}
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
-          >
-            <option value="">Select Company</option>
+          <div style={formRow}>
+            <select
+              style={input}
+              name="role"
+              value={formik.values.role}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            >
+              <option value="">Select Role</option>
+              <option value="Admin">Admin</option>
+              <option value="Member">Member</option>
+            </select>
 
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
+            <select
+              style={input}
+              name="company"
+              value={formik.values.company}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+            >
+              <option value="">Select Company</option>
 
-        <button style={button} onClick={createUser}>
-          ➕ Create User
-        </button>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {formik.touched.role && formik.errors.role && (
+            <div style={{ color: "red", marginBottom: 8 }}>{formik.errors.role}</div>
+          )}
+          {formik.touched.company && formik.errors.company && (
+            <div style={{ color: "red", marginBottom: 8 }}>{formik.errors.company}</div>
+          )}
+
+          <button style={button} type="submit" disabled={formik.isSubmitting || loader}>
+            {loader ? "Creating..." : "➕ Create User"}
+          </button>
+        </form>
       </div>
 
       <hr />
